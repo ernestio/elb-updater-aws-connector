@@ -43,56 +43,48 @@ func eventHandler(m *nats.Msg) {
 	e.Complete()
 }
 
-func mapListeners(ev *Event) []*elb.Listener {
-	var l []*elb.Listener
-
-	for _, port := range ev.ELBPorts {
-		l = append(l, &elb.Listener{
-			Protocol:         aws.String(port.Protocol),
-			LoadBalancerPort: aws.Int64(port.FromPort),
-			InstancePort:     aws.Int64(port.ToPort),
-			InstanceProtocol: aws.String(port.Protocol),
-			SSLCertificateId: aws.String(port.SSLCertID),
-		})
+func updateELBInstances(svc *elb.ELB, lb *elb.LoadBalancerDescription, ni []string) error {
+	// Instances to remove
+	drreq := elb.DeregisterInstancesFromLoadBalancerInput{
+		LoadBalancerName: lb.LoadBalancerName,
+		Instances:        instancesToDeregister(ni, lb.Instances),
 	}
 
-	return l
+	_, err := svc.DeregisterInstancesFromLoadBalancer(&drreq)
+	if err != nil {
+		return err
+	}
+
+	// Instances to add
+	rreq := elb.RegisterInstancesWithLoadBalancerInput{
+		LoadBalancerName: lb.LoadBalancerName,
+		Instances:        instancesToRegister(ni, lb.Instances),
+	}
+
+	_, err = svc.RegisterInstancesWithLoadBalancer(&rreq)
+
+	return err
 }
 
-func instancesToRegister(ev *Event, currentInstances []*elb.Instance) []*elb.Instance {
-	var i []*elb.Instance
-
-	for _, instance := range ev.InstanceAWSIDs {
-		exists := false
-		for _, ci := range currentInstances {
-			if instance == *ci.InstanceId {
-				exists = true
-			}
-		}
-		if exists != true {
-			i = append(i, &elb.Instance{InstanceId: aws.String(instance)})
-		}
+func updateELBListeners(svc *elb.ELB, lb *elb.LoadBalancerDescription, nl []Port) error {
+	dlreq := elb.DeleteLoadBalancerListenersInput{
+		LoadBalancerName:  lb.LoadBalancerName,
+		LoadBalancerPorts: listenersToDelete(nl, lb.ListenerDescriptions),
 	}
 
-	return i
-}
-
-func instancesToDeregister(ev *Event, currentInstances []*elb.Instance) []*elb.Instance {
-	var i []*elb.Instance
-
-	for _, ci := range currentInstances {
-		exists := false
-		for _, instance := range ev.InstanceAWSIDs {
-			if *ci.InstanceId == instance {
-				exists = true
-			}
-		}
-		if exists != true {
-			i = append(i, &elb.Instance{InstanceId: ci.InstanceId})
-		}
+	_, err := svc.DeleteLoadBalancerListeners(&dlreq)
+	if err != nil {
+		return err
 	}
 
-	return i
+	clreq := elb.CreateLoadBalancerListenersInput{
+		LoadBalancerName: lb.LoadBalancerName,
+		Listeners:        listenersToCreate(nl, lb.ListenerDescriptions),
+	}
+
+	_, err = svc.CreateLoadBalancerListeners(&clreq)
+
+	return err
 }
 
 func updateELB(ev *Event) error {
@@ -115,28 +107,18 @@ func updateELB(ev *Event) error {
 		return errors.New("Could not find ELB")
 	}
 
-	// Instances to add and remove
-	rreq := elb.RegisterInstancesWithLoadBalancerInput{
-		LoadBalancerName: aws.String(ev.ELBName),
-		Instances:        instancesToRegister(ev, resp.LoadBalancerDescriptions[0].Instances),
-	}
-
-	_, err = svc.RegisterInstancesWithLoadBalancer(&rreq)
-	if err != nil {
-		return err
-	}
-
-	drreq := elb.DeregisterInstancesFromLoadBalancerInput{
-		LoadBalancerName: aws.String(ev.ELBName),
-		Instances:        instancesToDeregister(ev, resp.LoadBalancerDescriptions[0].Instances),
-	}
-
-	_, err = svc.DeregisterInstancesFromLoadBalancer(&drreq)
-	if err != nil {
-		return err
-	}
+	lb := resp.LoadBalancerDescriptions[0]
 
 	// Update ports, certs and security groups
+	err = updateELBInstances(svc, lb, ev.InstanceAWSIDs)
+	if err != nil {
+		return err
+	}
+
+	err = updateELBListeners(svc, lb, ev.ELBPorts)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

@@ -69,9 +69,11 @@ func (ev *Event) Validate() error {
 		if port.Protocol == "" {
 			return ErrELBProtocolInvalid
 		}
+
 		if port.FromPort < 1 || port.FromPort > 65535 {
 			return ErrELBFromPortInvalid
 		}
+
 		if port.ToPort < 1 || port.ToPort > 65535 {
 			return ErrELBToPortInvalid
 		}
