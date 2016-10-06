@@ -87,6 +87,43 @@ func updateELBListeners(svc *elb.ELB, lb *elb.LoadBalancerDescription, nl []Port
 	return err
 }
 
+func updateELBNetworks(svc *elb.ELB, lb *elb.LoadBalancerDescription, nl []string) error {
+	dsreq := elb.DetachLoadBalancerFromSubnetsInput{
+		LoadBalancerName: lb.LoadBalancerName,
+		Subnets:          subnetsToDetach(nl, lb.Subnets),
+	}
+
+	_, err := svc.DetachLoadBalancerFromSubnets(&dsreq)
+	if err != nil {
+		return err
+	}
+
+	csreq := elb.AttachLoadBalancerToSubnetsInput{
+		LoadBalancerName: lb.LoadBalancerName,
+		Subnets:          subnetsToAttach(nl, lb.Subnets),
+	}
+
+	_, err = svc.AttachLoadBalancerToSubnets(&csreq)
+
+	return err
+}
+
+func updateELBSecurityGroups(svc *elb.ELB, lb *elb.LoadBalancerDescription, nsg []string) error {
+	var sgs []*string
+	for _, sg := range nsg {
+		sgs = append(sgs, aws.String(sg))
+	}
+
+	req := elb.ApplySecurityGroupsToLoadBalancerInput{
+		LoadBalancerName: lb.LoadBalancerName,
+		SecurityGroups:   sgs,
+	}
+
+	_, err := svc.ApplySecurityGroupsToLoadBalancer(&req)
+
+	return err
+}
+
 func updateELB(ev *Event) error {
 	creds := credentials.NewStaticCredentials(ev.DatacenterAccessKey, ev.DatacenterAccessToken, "")
 	svc := elb.New(session.New(), &aws.Config{
@@ -109,13 +146,23 @@ func updateELB(ev *Event) error {
 
 	lb := resp.LoadBalancerDescriptions[0]
 
-	// Update ports, certs and security groups
+	// Update ports, certs and security groups & networks
 	err = updateELBInstances(svc, lb, ev.InstanceAWSIDs)
 	if err != nil {
 		return err
 	}
 
 	err = updateELBListeners(svc, lb, ev.ELBPorts)
+	if err != nil {
+		return err
+	}
+
+	err = updateELBNetworks(svc, lb, ev.NetworkAWSIDs)
+	if err != nil {
+		return err
+	}
+
+	err = updateELBSecurityGroups(svc, lb, ev.SecurityGroupAWSIDs)
 	if err != nil {
 		return err
 	}

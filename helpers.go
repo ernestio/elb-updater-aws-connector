@@ -111,3 +111,39 @@ func listenersToCreate(newListeners []Port, currentListeners []*elb.ListenerDesc
 
 	return l
 }
+
+func subnetsToAttach(newSubnets []string, currentSubnets []*string) []*string {
+	var s []*string
+
+	for _, subnet := range newSubnets {
+		exists := false
+		for _, cs := range currentSubnets {
+			if subnet == *cs {
+				exists = true
+			}
+		}
+		if exists != true {
+			s = append(s, aws.String(subnet))
+		}
+	}
+
+	return s
+}
+
+func subnetsToDetach(newSubnets []string, currentSubnets []*string) []*string {
+	var s []*string
+
+	for _, cs := range currentSubnets {
+		exists := false
+		for _, subnet := range newSubnets {
+			if *cs == subnet {
+				exists = true
+			}
+		}
+		if exists != true {
+			s = append(s, cs)
+		}
+	}
+
+	return s
+}
