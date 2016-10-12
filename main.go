@@ -66,7 +66,7 @@ func updateELBInstances(svc *elb.ELB, lb *elb.LoadBalancerDescription, ni []stri
 	return err
 }
 
-func updateELBListeners(svc *elb.ELB, lb *elb.LoadBalancerDescription, nl []Port) error {
+func updateELBListeners(svc *elb.ELB, lb *elb.LoadBalancerDescription, nl []Listener) error {
 	dlreq := elb.DeleteLoadBalancerListenersInput{
 		LoadBalancerName:  lb.LoadBalancerName,
 		LoadBalancerPorts: listenersToDelete(nl, lb.ListenerDescriptions),
@@ -152,7 +152,7 @@ func updateELB(ev *Event) error {
 		return err
 	}
 
-	err = updateELBListeners(svc, lb, ev.ELBPorts)
+	err = updateELBListeners(svc, lb, ev.ELBListeners)
 	if err != nil {
 		return err
 	}

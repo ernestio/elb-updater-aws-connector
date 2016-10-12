@@ -12,13 +12,13 @@ import (
 func mapListeners(ev *Event) []*elb.Listener {
 	var l []*elb.Listener
 
-	for _, port := range ev.ELBPorts {
+	for _, listener := range ev.ELBListeners {
 		l = append(l, &elb.Listener{
-			Protocol:         aws.String(port.Protocol),
-			LoadBalancerPort: aws.Int64(port.FromPort),
-			InstancePort:     aws.Int64(port.ToPort),
-			InstanceProtocol: aws.String(port.Protocol),
-			SSLCertificateId: aws.String(port.SSLCertID),
+			Protocol:         aws.String(listener.Protocol),
+			LoadBalancerPort: aws.Int64(listener.FromPort),
+			InstancePort:     aws.Int64(listener.ToPort),
+			InstanceProtocol: aws.String(listener.Protocol),
+			SSLCertificateId: aws.String(listener.SSLCertID),
 		})
 	}
 
@@ -35,7 +35,7 @@ func portInUse(listeners []*elb.ListenerDescription, port int64) bool {
 	return false
 }
 
-func portRemoved(ports []Port, listener *elb.ListenerDescription) bool {
+func portRemoved(ports []Listener, listener *elb.ListenerDescription) bool {
 	for _, p := range ports {
 		if p.FromPort == *listener.Listener.LoadBalancerPort {
 			return false
@@ -81,7 +81,7 @@ func instancesToDeregister(newInstances []string, currentInstances []*elb.Instan
 	return i
 }
 
-func listenersToDelete(newListeners []Port, currentListeners []*elb.ListenerDescription) []*int64 {
+func listenersToDelete(newListeners []Listener, currentListeners []*elb.ListenerDescription) []*int64 {
 	var l []*int64
 
 	for _, cl := range currentListeners {
@@ -93,7 +93,7 @@ func listenersToDelete(newListeners []Port, currentListeners []*elb.ListenerDesc
 	return l
 }
 
-func listenersToCreate(newListeners []Port, currentListeners []*elb.ListenerDescription) []*elb.Listener {
+func listenersToCreate(newListeners []Listener, currentListeners []*elb.ListenerDescription) []*elb.Listener {
 	var l []*elb.Listener
 
 	for _, listener := range newListeners {
