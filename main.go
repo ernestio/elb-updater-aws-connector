@@ -44,15 +44,18 @@ func eventHandler(m *nats.Msg) {
 }
 
 func updateELBInstances(svc *elb.ELB, lb *elb.LoadBalancerDescription, ni []string) error {
+	var err error
+
 	// Instances to remove
 	drreq := elb.DeregisterInstancesFromLoadBalancerInput{
 		LoadBalancerName: lb.LoadBalancerName,
 		Instances:        instancesToDeregister(ni, lb.Instances),
 	}
-
-	_, err := svc.DeregisterInstancesFromLoadBalancer(&drreq)
-	if err != nil {
-		return err
+	if len(drreq.Instances) > 0 {
+		_, err = svc.DeregisterInstancesFromLoadBalancer(&drreq)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Instances to add
@@ -61,20 +64,26 @@ func updateELBInstances(svc *elb.ELB, lb *elb.LoadBalancerDescription, ni []stri
 		Instances:        instancesToRegister(ni, lb.Instances),
 	}
 
-	_, err = svc.RegisterInstancesWithLoadBalancer(&rreq)
+	if len(rreq.Instances) > 0 {
+		_, err = svc.RegisterInstancesWithLoadBalancer(&rreq)
+	}
 
 	return err
 }
 
 func updateELBListeners(svc *elb.ELB, lb *elb.LoadBalancerDescription, nl []Listener) error {
+	var err error
+
 	dlreq := elb.DeleteLoadBalancerListenersInput{
 		LoadBalancerName:  lb.LoadBalancerName,
 		LoadBalancerPorts: listenersToDelete(nl, lb.ListenerDescriptions),
 	}
 
-	_, err := svc.DeleteLoadBalancerListeners(&dlreq)
-	if err != nil {
-		return err
+	if len(dlreq.LoadBalancerPorts) > 0 {
+		_, err = svc.DeleteLoadBalancerListeners(&dlreq)
+		if err != nil {
+			return err
+		}
 	}
 
 	clreq := elb.CreateLoadBalancerListenersInput{
@@ -82,20 +91,26 @@ func updateELBListeners(svc *elb.ELB, lb *elb.LoadBalancerDescription, nl []List
 		Listeners:        listenersToCreate(nl, lb.ListenerDescriptions),
 	}
 
-	_, err = svc.CreateLoadBalancerListeners(&clreq)
+	if len(clreq.Listeners) > 0 {
+		_, err = svc.CreateLoadBalancerListeners(&clreq)
+	}
 
 	return err
 }
 
 func updateELBNetworks(svc *elb.ELB, lb *elb.LoadBalancerDescription, nl []string) error {
+	var err error
+
 	dsreq := elb.DetachLoadBalancerFromSubnetsInput{
 		LoadBalancerName: lb.LoadBalancerName,
 		Subnets:          subnetsToDetach(nl, lb.Subnets),
 	}
 
-	_, err := svc.DetachLoadBalancerFromSubnets(&dsreq)
-	if err != nil {
-		return err
+	if len(dsreq.Subnets) > 0 {
+		_, err = svc.DetachLoadBalancerFromSubnets(&dsreq)
+		if err != nil {
+			return err
+		}
 	}
 
 	csreq := elb.AttachLoadBalancerToSubnetsInput{
@@ -103,13 +118,17 @@ func updateELBNetworks(svc *elb.ELB, lb *elb.LoadBalancerDescription, nl []strin
 		Subnets:          subnetsToAttach(nl, lb.Subnets),
 	}
 
-	_, err = svc.AttachLoadBalancerToSubnets(&csreq)
+	if len(csreq.Subnets) > 0 {
+		_, err = svc.AttachLoadBalancerToSubnets(&csreq)
+	}
 
 	return err
 }
 
 func updateELBSecurityGroups(svc *elb.ELB, lb *elb.LoadBalancerDescription, nsg []string) error {
+	var err error
 	var sgs []*string
+
 	for _, sg := range nsg {
 		sgs = append(sgs, aws.String(sg))
 	}
@@ -119,7 +138,9 @@ func updateELBSecurityGroups(svc *elb.ELB, lb *elb.LoadBalancerDescription, nsg 
 		SecurityGroups:   sgs,
 	}
 
-	_, err := svc.ApplySecurityGroupsToLoadBalancer(&req)
+	if len(req.SecurityGroups) > 0 {
+		_, err = svc.ApplySecurityGroupsToLoadBalancer(&req)
+	}
 
 	return err
 }
@@ -147,12 +168,7 @@ func updateELB(ev *Event) error {
 	lb := resp.LoadBalancerDescriptions[0]
 
 	// Update ports, certs and security groups & networks
-	err = updateELBInstances(svc, lb, ev.InstanceAWSIDs)
-	if err != nil {
-		return err
-	}
-
-	err = updateELBListeners(svc, lb, ev.ELBListeners)
+	err = updateELBSecurityGroups(svc, lb, ev.SecurityGroupAWSIDs)
 	if err != nil {
 		return err
 	}
@@ -162,7 +178,12 @@ func updateELB(ev *Event) error {
 		return err
 	}
 
-	err = updateELBSecurityGroups(svc, lb, ev.SecurityGroupAWSIDs)
+	err = updateELBInstances(svc, lb, ev.InstanceAWSIDs)
+	if err != nil {
+		return err
+	}
+
+	err = updateELBListeners(svc, lb, ev.ELBListeners)
 	if err != nil {
 		return err
 	}
